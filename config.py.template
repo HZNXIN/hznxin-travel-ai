@@ -1,0 +1,26 @@
+# 配置模板
+# 复制此文件为 config.py 并填写你的配置
+
+# 高德开放平台
+GAODE_API_KEY = "YOUR_GAODE_API_KEY_HERE"  # 在 https://lbs.amap.com/ 获取
+GAODE_PRIVATE_KEY = ""  # 可选，用于签名
+
+# 数据库配置
+DATABASE_URL = "sqlite:///./data/gaode.db"  # 或使用 PostgreSQL
+# DATABASE_URL = "postgresql://user:password@localhost/gaode"
+
+# Redis配置（可选）
+REDIS_URL = "redis://localhost:6379/0"
+
+# AI模型配置
+BERT_MODEL_PATH = "bert-base-chinese"  # Hugging Face模型名
+USE_GPU = False  # 是否使用GPU
+
+# 系统配置
+MAX_CANDIDATES = 10  # 最多返回候选数
+MAX_DISTANCE_KM = 50  # 最大距离
+REQUEST_TIMEOUT = 10  # API请求超时（秒）
+
+# 日志配置
+LOG_LEVEL = "INFO"
+LOG_FILE = "logs/app.log"

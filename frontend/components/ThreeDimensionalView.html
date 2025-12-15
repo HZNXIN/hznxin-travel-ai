@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>三维决策空间 - GAODE</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .control-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .control-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .control-row input,
+        .control-row button {
+            padding: 12px 20px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            font-size: 1rem;
+        }
+
+        .control-row input {
+            flex: 1;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .timeline-3d {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .y-node {
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        .y-node::before {
+            content: '';
+            position: absolute;
+            left: 20px;
+            top: 50px;
+            bottom: -40px;
+            width: 2px;
+            background: linear-gradient(180deg, #667eea, #764ba2);
+        }
+
+        .y-node:last-child::before {
+            display: none;
+        }
+
+        .time-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-left: 50px;
+        }
+
+        .time-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            margin-right: 15px;
+            position: absolute;
+            left: 0;
+            z-index: 1;
+        }
+
+        .time-label {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .selected-option {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            border: 2px solid #667eea;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            margin-left: 50px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .field-glow {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 30% 30%, rgba(102, 126, 234, 0.2), transparent);
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .selected-option h3 {
+            font-size: 1.5rem;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .selected-meta {
+            display: flex;
+            gap: 20px;
+            color: #666;
+            font-size: 0.95rem;
+        }
+
+        .selected-meta span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .alternatives-bar {
+            display: flex;
+            gap: 10px;
+            margin-left: 50px;
+            overflow-x: auto;
+            padding: 10px 0;
+        }
+
+        .alt-card {
+            min-width: 200px;
+            padding: 15px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .alt-card:hover {
+            border-color: #667eea;
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
+        }
+
+        .alt-card.active {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .alt-card h4 {
+            font-size: 1.1rem;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .alt-card .field-strength {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .alt-card .field-bar {
+            height: 4px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .alt-card .field-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s;
+        }
+
+        .z-axis-panel {
+            position: fixed;
+            right: 20px;
+            top: 100px;
+            width: 350px;
+            max-height: 80vh;
+            background: rgba(0, 0, 0, 0.95);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            overflow-y: auto;
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .z-axis-panel h3 {
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+
+        .z-axis-panel .field-strength-display {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #4CAF50;
+            margin-bottom: 20px;
+        }
+
+        .factor-item {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .factor-item:last-child {
+            border-bottom: none;
+        }
+
+        .factor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .factor-name {
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .factor-value {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .factor-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            transition: width 0.3s;
+        }
+
+        .factor-explain {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.7);
+            line-height: 1.4;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="header">
+                <h1>🌌 三维决策空间</h1>
+                <p>X轴备选 × Y轴时间 × Z轴影响场</p>
+            </div>
+
+            <!-- 控制面板 -->
+            <div class="control-panel">
+                <div class="control-row">
+                    <input v-model="userInput" placeholder="输入您的需求，如：明天苏州一日游" />
+                    <input v-model="startLocation" placeholder="起点位置" style="max-width: 200px;" />
+                    <button class="btn" @click="generate3DSpace" :disabled="loading">
+                        {{ loading ? '生成中...' : '🚀 生成三维空间' }}
+                    </button>
+                </div>
+                <div class="control-row" v-if="sessionId">
+                    <button class="btn btn-secondary" @click="commitPlan">✅ 确认方案</button>
+                    <button class="btn btn-secondary" @click="viewDiff">📊 查看变化</button>
+                    <button class="btn btn-secondary" @click="exportPlan">💾 导出方案</button>
+                </div>
+            </div>
+
+            <!-- 加载状态 -->
+            <div v-if="loading" class="timeline-3d">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <p>正在生成三维决策空间...</p>
+                </div>
+            </div>
+
+            <!-- 三维时间线 -->
+            <div v-else-if="timeline.length > 0" class="timeline-3d">
+                <div v-for="(node, yIndex) in timeline" :key="yIndex" class="y-node">
+                    <!-- Y轴：时间点 -->
+                    <div class="time-header">
+                        <div class="time-icon">{{ yIndex + 1 }}</div>
+                        <div class="time-label">{{ formatTime(node.time) }}</div>
+                    </div>
+
+                    <!-- 当前选中（高亮） -->
+                    <div class="selected-option" v-if="node.selected">
+                        <div class="field-glow" :style="{ opacity: node.selected.field_strength }"></div>
+                        <h3>{{ node.selected.option.name }}</h3>
+                        <div class="selected-meta">
+                            <span>⏱️ {{ node.duration }}小时</span>
+                            <span>⭐ {{ node.selected.option.rating || '未评分' }}</span>
+                            <span>🎯 场强: {{ (node.selected.field_strength * 100).toFixed(0) }}%</span>
+                        </div>
+                    </div>
+
+                    <!-- X轴：横向备选 -->
+                    <div class="alternatives-bar">
+                        <div v-for="(alt, xIndex) in node.alternatives"
+                             :key="xIndex"
+                             :class="['alt-card', { active: alt.is_selected }]"
+                             @click="switchAlternative(yIndex, xIndex)"
+                             @mouseenter="showZAxisInfo(yIndex, xIndex)">
+                            <h4>{{ alt.name }}</h4>
+                            <div class="field-strength">场强: {{ (alt.field_strength * 100).toFixed(0) }}%</div>
+                            <div class="field-bar">
+                                <div class="field-bar-fill" :style="{ width: (alt.field_strength * 100) + '%' }"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Z轴深度信息（悬浮显示） -->
+            <div v-if="hoveredPoint" class="z-axis-panel">
+                <h3>📊 深度分析（Z轴）</h3>
+                <div class="field-strength-display">
+                    {{ (hoveredPoint.field_strength * 100).toFixed(0) }}%
+                </div>
+
+                <div class="factors">
+                    <div v-for="(factor, index) in hoveredPoint.factors" :key="index" class="factor-item">
+                        <div class="factor-header">
+                            <span class="factor-name">{{ factor.name }}</span>
+                            <span class="factor-value">{{ (factor.value * 100).toFixed(0) }}%</span>
+                        </div>
+                        <div class="factor-bar">
+                            <div class="bar-fill" :style="{ width: (factor.value * 100) + '%' }"></div>
+                        </div>
+                        <p class="factor-explain">{{ factor.explanation }}</p>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button class="btn" @click="selectThisOption">选择此方案</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    userInput: '明天苏州一日游，想去拙政园和平江路',
+                    startLocation: '苏州站',
+                    sessionId: null,
+                    timeline: [],
+                    loading: false,
+                    hoveredPoint: null,
+                    hoveredCoords: { y: 0, x: 0 }
+                };
+            },
+            methods: {
+                async generate3DSpace() {
+                    this.loading = true;
+                    try {
+                        const response = await axios.post('http://localhost:8000/api/3d/generate', {
+                            user_input: this.userInput,
+                            start_location: this.startLocation,
+                            city: '苏州',
+                            y_steps: 5,
+                            x_alternatives: 4
+                        });
+
+                        if (response.data.success) {
+                            this.sessionId = response.data.session_id;
+                            this.timeline = response.data.data.timeline;
+                            console.log('✅ 三维空间生成成功', response.data);
+                        }
+                    } catch (error) {
+                        console.error('生成失败:', error);
+                        alert('生成失败: ' + (error.response?.data?.detail || error.message));
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async switchAlternative(yIndex, xIndex) {
+                    try {
+                        const response = await axios.post(
+                            `http://localhost:8000/api/3d/switch?session_id=${this.sessionId}&y_index=${yIndex}&x_index=${xIndex}`
+                        );
+
+                        if (response.data.success) {
+                            this.timeline = response.data.current_plan.timeline;
+                            console.log('✅ 切换成功');
+                        }
+                    } catch (error) {
+                        console.error('切换失败:', error);
+                    }
+                },
+
+                async showZAxisInfo(yIndex, xIndex) {
+                    this.hoveredCoords = { y: yIndex, x: xIndex };
+                    try {
+                        const response = await axios.get(
+                            `http://localhost:8000/api/3d/explain?session_id=${this.sessionId}&y_index=${yIndex}&x_index=${xIndex}`
+                        );
+
+                        if (response.data.success) {
+                            this.hoveredPoint = response.data.explanation;
+                        }
+                    } catch (error) {
+                        console.error('获取解释失败:', error);
+                    }
+                },
+
+                selectThisOption() {
+                    this.switchAlternative(this.hoveredCoords.y, this.hoveredCoords.x);
+                },
+
+                async commitPlan() {
+                    try {
+                        const response = await axios.post(
+                            `http://localhost:8000/api/3d/commit?session_id=${this.sessionId}&message=用户确认方案`
+                        );
+
+                        if (response.data.success) {
+                            alert('✅ 方案已确认并保存！');
+                            console.log('快照:', response.data.snapshot);
+                        }
+                    } catch (error) {
+                        console.error('提交失败:', error);
+                        alert('提交失败: ' + (error.response?.data?.detail || error.message));
+                    }
+                },
+
+                async viewDiff() {
+                    try {
+                        const response = await axios.get(
+                            `http://localhost:8000/api/3d/diff?session_id=${this.sessionId}`
+                        );
+
+                        if (response.data.success) {
+                            if (response.data.has_changes) {
+                                console.log('变化详情:', response.data.diffs);
+                                alert('发现 ' + response.data.diffs.length + ' 处变化，请查看控制台');
+                            } else {
+                                alert('暂无变化');
+                            }
+                        }
+                    } catch (error) {
+                        console.error('查看差异失败:', error);
+                    }
+                },
+
+                async exportPlan() {
+                    try {
+                        const response = await axios.get(
+                            `http://localhost:8000/api/3d/export?session_id=${this.sessionId}`
+                        );
+
+                        if (response.data.success) {
+                            console.log('导出方案:', response.data.plan);
+                            const blob = new Blob([JSON.stringify(response.data.plan, null, 2)], {
+                                type: 'application/json'
+                            });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `plan_${this.sessionId.substring(0, 8)}.json`;
+                            a.click();
+                        }
+                    } catch (error) {
+                        console.error('导出失败:', error);
+                    }
+                },
+
+                formatTime(timeStr) {
+                    const date = new Date(timeStr);
+                    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

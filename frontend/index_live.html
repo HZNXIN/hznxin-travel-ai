@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Horizon | 高德空间智能系统 [实时版]</title>
+    
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        * { box-sizing: border-box; }
+        
+        body { 
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            color: #e2e8f0; 
+            font-family: 'Microsoft YaHei', 'PingFang SC', -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        .neon-text { 
+            text-shadow: 0 0 20px rgba(59, 130, 246, 0.8), 0 0 40px rgba(59, 130, 246, 0.4); 
+        }
+        
+        .glass-panel { 
+            background: rgba(30, 41, 59, 0.85); 
+            backdrop-filter: blur(20px); 
+            border: 1px solid rgba(255,255,255,0.15);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(30, 41, 59, 0.5); }
+        ::-webkit-scrollbar-thumb { 
+            background: linear-gradient(to bottom, #3b82f6, #2563eb);
+            border-radius: 4px; 
+        }
+        
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.4s ease-out; }
+        
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
+            50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.8); }
+        }
+        .pulse-glow { animation: pulseGlow 2s ease-in-out infinite; }
+        
+        /* 强调变化效果 */
+        @keyframes highlight {
+            0%, 100% { background: rgba(59, 130, 246, 0.1); }
+            50% { background: rgba(59, 130, 246, 0.3); }
+        }
+        .highlight-change { animation: highlight 0.6s ease-in-out; }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .badge-green { background: rgba(16, 185, 129, 0.3); color: #10b981; border: 1px solid #10b981; }
+        .badge-yellow { background: rgba(251, 191, 36, 0.3); color: #fbbf24; border: 1px solid #fbbf24; }
+        .badge-red { background: rgba(239, 68, 68, 0.3); color: #ef4444; border: 1px solid #ef4444; }
+        .badge-blue { background: rgba(59, 130, 246, 0.3); color: #3b82f6; border: 1px solid #3b82f6; }
+        
+        .weather-btn {
+            transition: all 0.3s ease;
+            transform: scale(1);
+        }
+        .weather-btn:hover {
+            transform: scale(1.15);
+            box-shadow: 0 0 25px rgba(59, 130, 246, 0.6);
+        }
+        .weather-btn.active {
+            transform: scale(1.2);
+            box-shadow: 0 0 35px rgba(59, 130, 246, 0.9);
+            background: rgba(59, 130, 246, 0.3) !important;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin { animation: spin 1s linear infinite; }
+        
+        /* 更新提示 */
+        .update-indicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 9999;
+            background: rgba(30, 41, 59, 0.95);
+            padding: 30px 50px;
+            border-radius: 20px;
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 60px rgba(59, 130, 246, 0.6);
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="h-screen flex flex-col">
+        
+        <!-- 更新加载提示 -->
+        <div v-if="loading" class="update-indicator animate-fade-in-up">
+            <div class="flex items-center gap-4">
+                <div class="w-8 h-8 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
+                <div class="text-xl font-bold text-cyan-300">
+                    {{ loadingMessage }}
+                </div>
+            </div>
+        </div>
+        
+        <!-- 顶部状态栏 -->
+        <header class="h-20 border-b border-slate-700 flex items-center justify-between px-8 bg-slate-900/90 backdrop-blur-sm">
+            <div class="flex items-center gap-4">
+                <div class="w-4 h-4 rounded-full bg-green-500 pulse-glow"></div>
+                <h1 class="text-2xl font-bold tracking-wider neon-text">
+                    EVENT HORIZON
+                    <span class="text-sm font-normal text-slate-400 ml-3">时空智能引擎 [实时版]</span>
+                </h1>
+            </div>
+            
+            <div class="flex items-center gap-8">
+                <div class="flex items-center gap-3">
+                    <span class="text-sm text-slate-300">后端API</span>
+                    <span class="badge" :class="apiConnected ? 'badge-green' : 'badge-red'">
+                        {{ apiConnected ? '● 在线 (93 POI)' : '● 离线模式' }}
+                    </span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-sm text-slate-300">阻尼状态</span>
+                    <span class="badge badge-blue">{{ dampingStatus }}</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-sm text-slate-300">更新次数</span>
+                    <span class="text-sm font-mono text-cyan-400 font-bold">{{ updateCount }}</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 flex overflow-hidden">
+            
+            <!-- 左侧控制面板 -->
+            <aside class="w-96 border-r border-slate-700 p-6 flex flex-col gap-6 bg-slate-900/50 overflow-y-auto">
+                
+                <div class="space-y-5 animate-fade-in-up">
+                    <h3 class="text-base font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                        <span class="text-2xl">🎯</span>
+                        <span>场景控制中心</span>
+                    </h3>
+                    
+                    <div class="glass-panel p-5 rounded-xl space-y-5">
+                        <div>
+                            <label class="text-sm text-slate-300 block mb-3 font-medium">🌏 目的地城市</label>
+                            <select v-model="city" @change="onSceneChange" class="w-full bg-slate-800 border-2 border-slate-600 rounded-lg px-4 py-3 text-base text-slate-200 focus:outline-none focus:border-blue-500 transition">
+                                <option value="苏州">苏州</option>
+                                <option value="杭州">杭州</option>
+                                <option value="南京">南京</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between text-base mb-3">
+                                <span class="text-slate-300 font-medium">🕐 当前时间</span>
+                                <span class="font-mono text-blue-400 font-bold text-lg">{{ currentHour }}:00</span>
+                            </div>
+                            <input type="range" min="0" max="23" v-model="currentHour" @input="onSceneChange" class="w-full h-3 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                            <div class="flex justify-between text-xs text-slate-500 mt-2">
+                                <span>00:00</span>
+                                <span>12:00</span>
+                                <span>23:00</span>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between text-base mb-3">
+                                <span class="text-slate-300 font-medium">🌤️ 天气状况</span>
+                                <span class="font-mono font-bold text-lg" :class="weatherColorClass">{{ weather }}</span>
+                            </div>
+                            <div class="grid grid-cols-4 gap-3">
+                                <button @click="setWeather('晴')" class="weather-btn py-3 text-2xl rounded-lg bg-slate-700 hover:bg-slate-600 transition" :class="{'active': weather === '晴'}">☀️</button>
+                                <button @click="setWeather('多云')" class="weather-btn py-3 text-2xl rounded-lg bg-slate-700 hover:bg-slate-600 transition" :class="{'active': weather === '多云'}">⛅</button>
+                                <button @click="setWeather('小雨')" class="weather-btn py-3 text-2xl rounded-lg bg-slate-700 hover:bg-slate-600 transition" :class="{'active': weather === '小雨'}">🌧️</button>
+                                <button @click="setWeather('暴雨')" class="weather-btn py-3 text-2xl rounded-lg bg-slate-700 hover:bg-slate-600 transition" :class="{'active': weather === '暴雨'}">⛈️</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4 animate-fade-in-up" style="animation-delay: 0.1s;">
+                    <h3 class="text-base font-bold text-purple-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                        <span class="text-2xl">🌆</span>
+                        <span>时空阻尼监控</span>
+                    </h3>
+                    
+                    <div class="glass-panel p-5 rounded-xl space-y-4 text-sm">
+                        <div :class="{'highlight-change': factorChanged}">
+                            <div class="flex justify-between mb-2">
+                                <span class="text-slate-200 font-medium">L_zone (区域因子)</span>
+                                <span class="font-mono text-yellow-400 font-bold text-lg">{{ factors.l_zone.toFixed(2) }}</span>
+                            </div>
+                            <div class="w-full bg-slate-700 h-3 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 transition-all duration-700" :style="{width: (factors.l_zone * 100) + '%'}"></div>
+                            </div>
+                            <p class="text-slate-400 text-xs mt-2">{{ zoneDescription }}</p>
+                        </div>
+                        
+                        <div class="pt-3">
+                            <div class="flex justify-between mb-2">
+                                <span class="text-slate-200 font-medium">L_flow (潮汐因子)</span>
+                                <span class="font-mono text-purple-400 font-bold text-lg">{{ factors.l_flow.toFixed(2) }}</span>
+                            </div>
+                            <div class="w-full bg-slate-700 h-3 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-purple-600 to-purple-400 transition-all duration-700" :style="{width: (factors.l_flow * 100) + '%'}"></div>
+                            </div>
+                            <p class="text-slate-400 text-xs mt-2">{{ flowDescription }}</p>
+                        </div>
+                        
+                        <div class="pt-3">
+                            <div class="flex justify-between mb-2">
+                                <span class="text-slate-200 font-medium">L_activity (活力因子)</span>
+                                <span class="font-mono text-green-400 font-bold text-lg">{{ factors.l_activity.toFixed(2) }}</span>
+                            </div>
+                            <div class="w-full bg-slate-700 h-3 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-green-600 to-green-400 transition-all duration-700" :style="{width: (factors.l_activity * 100) + '%'}"></div>
+                            </div>
+                            <p class="text-slate-400 text-xs mt-2">LBS热力图实时计算</p>
+                        </div>
+                        
+                        <div class="pt-4 border-t-2 border-slate-700">
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-100 font-bold text-base">综合修正系数</span>
+                                <span class="text-2xl font-mono font-bold" :class="finalModifierColorClass">{{ finalModifier.toFixed(2) }}x</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button @click="fetchRecommendations" :disabled="loading" class="glass-panel p-4 rounded-xl text-base font-bold text-cyan-400 hover:bg-slate-700 transition flex items-center justify-center gap-3" :class="{'opacity-50': loading}">
+                    <span v-if="loading" class="inline-block w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></span>
+                    <span v-else>🔄</span>
+                    <span>{{ loading ? '更新中...' : '手动刷新' }}</span>
+                </button>
+                
+                <!-- 数据来源指示 -->
+                <div class="glass-panel p-4 rounded-lg text-xs space-y-2">
+                    <h4 class="font-bold text-slate-300 mb-2">📊 数据来源</h4>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">POI数据库</span>
+                        <span class="text-green-400 font-mono">{{ poiCount }} 个</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">天气API</span>
+                        <span :class="apiConnected ? 'text-green-400' : 'text-yellow-400'">{{ apiConnected ? '高德实时' : 'Mock' }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">时空阻尼</span>
+                        <span class="text-green-400">实时计算</span>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 中间画布 -->
+            <section class="flex-1 relative bg-gradient-to-br from-slate-950 to-slate-900">
+                <div class="absolute inset-0 opacity-10" style="background-image: repeating-linear-gradient(0deg, #3b82f6 0px, transparent 1px, transparent 50px), repeating-linear-gradient(90deg, #3b82f6 0px, transparent 1px, transparent 50px);"></div>
+                
+                <div id="graph-container" class="w-full h-full relative z-10"></div>
+                
+                <transition>
+                    <div v-if="aiMessage" class="absolute bottom-10 left-1/2 -translate-x-1/2 glass-panel px-8 py-4 rounded-full flex items-center gap-4 shadow-2xl animate-fade-in-up">
+                        <span class="text-3xl">🤖</span>
+                        <span class="text-base font-medium text-cyan-300">{{ aiMessage }}</span>
+                    </div>
+                </transition>
+                
+                <div class="absolute top-8 right-8 glass-panel p-5 rounded-xl text-sm space-y-3">
+                    <h4 class="font-bold text-slate-200 mb-4 text-base">🎨 边颜色图例</h4>
+                    <div class="flex items-center gap-3">
+                        <div class="w-16 h-2 bg-green-500 rounded-full"></div>
+                        <span class="text-slate-300">畅通 (≥1.0x)</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-16 h-2 bg-yellow-500 rounded-full"></div>
+                        <span class="text-slate-300">一般 (0.6-1.0x)</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-16 h-2 bg-red-500 rounded-full"></div>
+                        <span class="text-slate-300">拥堵 (<0.6x)</span>
+                    </div>
+                </div>
+                
+                <div class="absolute top-8 left-8 glass-panel px-6 py-4 rounded-xl">
+                    <div class="text-xs text-slate-400 mb-1">显示POI</div>
+                    <div class="text-3xl font-bold font-mono text-blue-400">{{ poiCount }}</div>
+                    <div class="text-xs text-slate-500 mt-1">/ {{ apiConnected ? '93' : '演示' }} 总数</div>
+                </div>
+            </section>
+
+            <!-- 右侧详情面板 -->
+            <aside class="w-[450px] border-l border-slate-700 p-6 bg-slate-900/50 overflow-y-auto">
+                <div v-if="selectedNode" class="space-y-6 animate-fade-in-up">
+                    
+                    <div class="glass-panel rounded-xl overflow-hidden">
+                        <div class="h-36 bg-gradient-to-br from-blue-900 via-blue-800 to-slate-900 flex items-center justify-center relative">
+                            <div class="absolute inset-0 bg-black opacity-30"></div>
+                            <div class="text-center z-10">
+                                <h2 class="text-3xl font-bold text-white mb-3">{{ selectedNode.name }}</h2>
+                                <div class="flex gap-2 justify-center flex-wrap">
+                                    <span class="badge badge-blue text-sm" v-for="tag in selectedNode.tags">{{ tag }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-6 rounded-xl">
+                        <div class="flex items-end justify-between border-b-2 border-slate-700 pb-5 mb-5">
+                            <div>
+                                <div class="text-sm text-slate-400 mb-2">综合推荐指数</div>
+                                <div class="text-6xl font-bold font-mono" :class="scoreColorClass">{{ selectedNode.score.toFixed(2) }}</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-sm text-slate-400 mb-2">时空修正</div>
+                                <div class="text-3xl font-mono font-bold" :class="dampingColorClass">{{ selectedNode.damping_factor.toFixed(2) }}x</div>
+                            </div>
+                        </div>
+                        
+                        <div class="space-y-3 text-base">
+                            <div class="flex justify-between">
+                                <span class="text-slate-300">基础评分</span>
+                                <span class="font-mono text-slate-100 font-bold">{{ selectedNode.base_score.toFixed(2) }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-300">天气修正</span>
+                                <span class="font-mono font-bold" :class="selectedNode.weather_modifier > 1 ? 'text-green-400' : selectedNode.weather_modifier < 1 ? 'text-red-400' : 'text-slate-200'">
+                                    {{ selectedNode.weather_modifier.toFixed(2) }}x
+                                    {{ selectedNode.weather_modifier > 1 ? '⬆️' : selectedNode.weather_modifier < 1 ? '⬇️' : '➡️' }}
+                                </span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-300">时空修正</span>
+                                <span class="font-mono font-bold" :class="selectedNode.damping_factor >= 1 ? 'text-green-400' : selectedNode.damping_factor >= 0.6 ? 'text-yellow-400' : 'text-red-400'">
+                                    {{ selectedNode.damping_factor.toFixed(2) }}x
+                                    {{ selectedNode.damping_factor >= 1 ? '🟢' : selectedNode.damping_factor >= 0.6 ? '🟡' : '🔴' }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-5 rounded-xl space-y-3">
+                        <h4 class="text-base font-bold text-slate-200 flex items-center gap-2">
+                            <span class="text-2xl">🧠</span>
+                            <span>AI 决策逻辑</span>
+                        </h4>
+                        <div class="p-4 rounded-lg bg-slate-800/70 border-2 border-slate-700 text-base leading-relaxed text-slate-200">
+                            {{ selectedNode.reason }}
+                        </div>
+                    </div>
+
+                    <div v-if="selectedNode.is_blocked" class="glass-panel p-5 rounded-xl bg-red-900/30 border-2 border-red-500/70 pulse-glow">
+                        <div class="flex gap-4 items-start">
+                            <span class="text-3xl">⛔</span>
+                            <div>
+                                <h5 class="font-bold text-red-400 text-base uppercase mb-3">拥堵熔断警告</h5>
+                                <p class="text-base text-red-200 leading-relaxed">{{ selectedNode.block_reason }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-5 rounded-xl space-y-4">
+                        <h4 class="text-base font-bold text-slate-200 flex items-center gap-2">
+                            <span class="text-2xl">🔍</span>
+                            <span>四项原则验证</span>
+                        </h4>
+                        <div class="grid grid-cols-2 gap-3 text-sm">
+                            <div class="bg-slate-800/70 p-4 rounded-lg border border-slate-700">
+                                <div class="text-slate-400 mb-2">数据一致性</div>
+                                <div class="font-mono font-bold text-green-400 text-xl">{{ selectedNode.verification.consistency }}%</div>
+                            </div>
+                            <div class="bg-slate-800/70 p-4 rounded-lg border border-slate-700">
+                                <div class="text-slate-400 mb-2">虚假率</div>
+                                <div class="font-mono font-bold text-blue-400 text-xl">{{ selectedNode.verification.fake_rate }}%</div>
+                            </div>
+                            <div class="bg-slate-800/70 p-4 rounded-lg border border-slate-700">
+                                <div class="text-slate-400 mb-2">空间合理性</div>
+                                <div class="font-mono font-bold text-yellow-400 text-xl">{{ selectedNode.verification.spatial }}</div>
+                            </div>
+                            <div class="bg-slate-800/70 p-4 rounded-lg border border-slate-700">
+                                <div class="text-slate-400 mb-2">时间可行性</div>
+                                <div class="font-mono font-bold text-purple-400 text-xl">{{ selectedNode.verification.temporal }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="selectedNode.future_preview && selectedNode.future_preview.length > 0" class="glass-panel p-5 rounded-xl">
+                        <h4 class="text-base font-bold text-slate-200 flex items-center gap-2 mb-4">
+                            <span class="text-2xl">🔮</span>
+                            <span>选择后可能去</span>
+                        </h4>
+                        <div class="flex flex-wrap gap-2">
+                            <span v-for="poi in selectedNode.future_preview" class="badge badge-green text-sm">{{ poi }}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div v-else class="h-full flex flex-col items-center justify-center text-slate-600 space-y-6">
+                    <div class="text-8xl opacity-30">🗺️</div>
+                    <div class="text-center">
+                        <p class="font-medium text-slate-400 text-lg mb-2">点击拓扑节点</p>
+                        <p class="text-base text-slate-500">查看 AI 分析详情</p>
+                        <p class="text-sm text-slate-600 mt-4">当前显示 {{ poiCount }} 个真实POI</p>
+                    </div>
+                </div>
+            </aside>
+
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch } = Vue;
+
+        createApp({
+            setup() {
+                const city = ref('苏州');
+                const currentHour = ref(14);
+                const weather = ref('小雨');
+                const selectedNode = ref(null);
+                const aiMessage = ref('');
+                const loading = ref(false);
+                const loadingMessage = ref('正在更新数据...');
+                const apiConnected = ref(false);
+                const updateCount = ref(0);
+                const factorChanged = ref(false);
+                
+                const factors = ref({
+                    l_zone: 1.0,
+                    l_flow: 1.0,
+                    l_activity: 1.1
+                });
+                
+                const graphData = ref({
+                    nodes: [],
+                    links: []
+                });
+                
+                const poiCount = ref(0);
+                
+                // 计算属性
+                const currentTime = computed(() => `${String(currentHour.value).padStart(2, '0')}:00`);
+                
+                const weatherColorClass = computed(() => {
+                    return weather.value === '晴' ? 'text-yellow-400' :
+                           weather.value === '多云' ? 'text-slate-400' :
+                           'text-blue-400';
+                });
+                
+                const scoreColorClass = computed(() => {
+                    if (!selectedNode.value) return '';
+                    const score = selectedNode.value.score;
+                    return score >= 0.8 ? 'text-green-400' :
+                           score >= 0.6 ? 'text-yellow-400' :
+                           'text-red-400';
+                });
+                
+                const dampingColorClass = computed(() => {
+                    if (!selectedNode.value) return '';
+                    const damping = selectedNode.value.damping_factor;
+                    return damping >= 1.0 ? 'text-green-400' :
+                           damping >= 0.6 ? 'text-yellow-400' :
+                           'text-red-400';
+                });
+                
+                const finalModifier = computed(() => {
+                    return factors.value.l_zone * factors.value.l_flow * factors.value.l_activity;
+                });
+                
+                const finalModifierColorClass = computed(() => {
+                    const modifier = finalModifier.value;
+                    return modifier >= 1.0 ? 'text-green-400' :
+                           modifier >= 0.6 ? 'text-yellow-400' :
+                           'text-red-400';
+                });
+                
+                const dampingStatus = computed(() => {
+                    const modifier = finalModifier.value;
+                    return modifier >= 1.0 ? '🟢 畅通' :
+                           modifier >= 0.6 ? '🟡 一般' :
+                           '🔴 拥堵';
+                });
+                
+                const zoneDescription = computed(() => {
+                    const zone = factors.value.l_zone;
+                    return zone >= 1.0 ? '普通区域，通行正常' :
+                           zone >= 0.6 ? 'CBD区域，轻度拥堵' :
+                           '核心区域，严重拥堵';
+                });
+                
+                const flowDescription = computed(() => {
+                    const hour = currentHour.value;
+                    if (hour >= 7 && hour <= 9) return '早高峰，进城方向拥堵';
+                    if (hour >= 17 && hour <= 19) return '晚高峰，出城方向拥堵';
+                    return '非高峰时段，通行顺畅';
+                });
+
+                // ECharts
+                let chart = null;
+                
+                const initChart = () => {
+                    chart = echarts.init(document.getElementById('graph-container'));
+                    updateChart();
+                    
+                    chart.on('click', (params) => {
+                        if (params.dataType === 'node') {
+                            selectedNode.value = params.data;
+                            
+                            if (params.data.id !== '0') {
+                                aiMessage.value = `✅ 已选择 "${params.data.name}"，右侧显示详细分析`;
+                                setTimeout(() => { aiMessage.value = ''; }, 2500);
+                            }
+                        }
+                    });
+                };
+                
+                const updateChart = () => {
+                    if (!chart || !graphData.value.nodes.length) return;
+                    
+                    console.log('更新图表，节点数:', graphData.value.nodes.length);
+                    
+                    const option = {
+                        tooltip: { show: false },
+                        animationDuration: 1000,
+                        animationEasing: 'cubicOut',
+                        series: [{
+                            type: 'graph',
+                            layout: 'none',
+                            roam: true,
+                            label: {
+                                show: true,
+                                position: 'bottom',
+                                color: '#e2e8f0',
+                                fontSize: 13,
+                                fontWeight: 'bold',
+                                formatter: '{b}'
+                            },
+                            edgeSymbol: ['circle', 'arrow'],
+                            edgeSymbolSize: [5, 12],
+                            data: graphData.value.nodes,
+                            links: graphData.value.links,
+                            lineStyle: {
+                                opacity: 0.9,
+                                curveness: 0.2
+                            },
+                            emphasis: {
+                                focus: 'adjacency',
+                                label: { fontSize: 16 },
+                                lineStyle: { width: 5 }
+                            }
+                        }]
+                    };
+                    
+                    chart.setOption(option, true);
+                };
+                
+                // API 请求
+                const fetchRecommendations = async () => {
+                    loading.value = true;
+                    loadingMessage.value = '🔄 正在从高德API获取数据...';
+                    aiMessage.value = '';
+                    factorChanged.value = true;
+                    setTimeout(() => { factorChanged.value = false; }, 600);
+                    
+                    console.log('开始请求API:', city.value, currentHour.value, weather.value);
+                    
+                    try {
+                        const url = `http://localhost:8000/api/recommendations?city=${encodeURIComponent(city.value)}&current_hour=${currentHour.value}&weather_condition=${encodeURIComponent(weather.value)}`;
+                        console.log('请求URL:', url);
+                        
+                        const response = await fetch(url);
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            console.log('API返回数据:', data);
+                            
+                            graphData.value = data;
+                            factors.value = data.factors;
+                            poiCount.value = data.nodes.length - 1;
+                            apiConnected.value = true;
+                            updateCount.value++;
+                            
+                            loadingMessage.value = `✅ 已加载 ${poiCount.value} 个真实POI`;
+                            aiMessage.value = `✅ 成功加载 ${poiCount.value} 个景点，点击节点查看详情`;
+                            
+                            updateChart();
+                        } else {
+                            throw new Error('API error');
+                        }
+                    } catch (error) {
+                        console.warn('API离线，使用演示数据', error);
+                        apiConnected.value = false;
+                        loadingMessage.value = '⚠️ API离线，使用演示数据';
+                        aiMessage.value = '⚠️ 后端离线，正在显示演示数据';
+                        // 这里不调用loadMockData，让用户知道需要连接后端
+                    }
+                    
+                    setTimeout(() => { 
+                        aiMessage.value = ''; 
+                        loading.value = false;
+                    }, 2000);
+                };
+                
+                const setWeather = (w) => {
+                    console.log('切换天气:', weather.value, '->', w);
+                    weather.value = w;
+                    onSceneChange();
+                };
+                
+                const onSceneChange = () => {
+                    console.log('场景变化，自动刷新');
+                    fetchRecommendations();
+                };
+                
+                // 生命周期
+                onMounted(() => {
+                    console.log('组件挂载，初始化系统');
+                    initChart();
+                    fetchRecommendations();
+                    
+                    window.addEventListener('resize', () => {
+                        if (chart) chart.resize();
+                    });
+                    
+                    aiMessage.value = '🎯 系统已就绪，调整参数观察变化';
+                    setTimeout(() => { aiMessage.value = ''; }, 3000);
+                });
+                
+                return {
+                    city, currentHour, weather, selectedNode, aiMessage, loading, loadingMessage,
+                    apiConnected, factors, poiCount, updateCount, factorChanged,
+                    currentTime, weatherColorClass, scoreColorClass, dampingColorClass,
+                    finalModifier, finalModifierColorClass, dampingStatus,
+                    zoneDescription, flowDescription,
+                    fetchRecommendations, setWeather, onSceneChange
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

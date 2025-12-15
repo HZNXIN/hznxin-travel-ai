@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS TRAVEL COMMAND CENTER</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <!-- 高德地图JS API -->
+    <script src="https://webapi.amap.com/maps?v=2.0&key=c0879532b66de630ce0e0937e828fa12"></script>
+    <style>
+        /* --- 全局基础设置 --- */
+        :root {
+            --primary-color: #00f3ff;
+            --warning-color: #ff3333;
+            --bg-color: #050a14;
+            --glass-bg: rgba(0, 243, 255, 0.05);
+            --border-glow: 0 0 10px rgba(0, 243, 255, 0.4);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--primary-color);
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            overflow: hidden;
+            height: 100vh;
+            background-image: 
+                linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-rows: 60px 1fr;
+            height: 100vh;
+            padding: 10px;
+            gap: 10px;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 25% 45% 30%;
+            gap: 15px;
+            height: 100%;
+        }
+
+        /* --- 顶部状态栏 --- */
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--primary-color);
+            padding: 0 20px;
+            background: rgba(0,0,0,0.5);
+            box-shadow: var(--border-glow);
+        }
+        .system-status span { margin-left: 20px; font-weight: bold; }
+        .blink { animation: blinker 1s linear infinite; color: var(--warning-color); }
+
+        /* --- 通用 JARVIS 盒子样式 --- */
+        .jarvis-box {
+            background: var(--glass-bg);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            position: relative;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(4px);
+            transition: all 0.3s;
+        }
+        
+        .jarvis-box::before, .jarvis-box::after,
+        .corner-br::before, .corner-br::after {
+            content: ''; position: absolute; width: 10px; height: 10px;
+            border-color: var(--primary-color); border-style: solid; transition: all 0.3s;
+        }
+        .jarvis-box::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+        .jarvis-box::after { top: -1px; right: -1px; border-width: 2px 2px 0 0; }
+        .corner-br { position: absolute; bottom: 0; right: 0; width: 100%; height: 100%; pointer-events: none; }
+        .corner-br::before { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
+        .corner-br::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+        .box-title {
+            font-size: 1.2rem;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.3);
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 5px var(--primary-color);
+        }
+
+        /* --- 左侧模块 --- */
+        .col-left { display: flex; flex-direction: column; gap: 15px; }
+        
+        #radar-chart { flex: 1; min-height: 200px; }
+        
+        .terminal-log {
+            flex: 1;
+            background: rgba(0,0,0,0.6);
+            border: 1px solid #333;
+            padding: 10px;
+            font-size: 0.8rem;
+            overflow-y: auto;
+            color: #0f0;
+            max-height: 300px;
+        }
+        .log-line { margin: 2px 0; opacity: 0.8; }
+
+        /* --- 中间模块 --- */
+        .col-center { display: flex; flex-direction: column; gap: 15px; position: relative; }
+        
+        .hologram-map {
+            flex: 2;
+            background: radial-gradient(circle at center, #002244 0%, #000 100%);
+            border: 1px solid var(--primary-color);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .map-grid {
+            position: absolute; width: 200%; height: 200%;
+            background-image: linear-gradient(var(--primary-color) 1px, transparent 1px),
+            linear-gradient(90deg, var(--primary-color) 1px, transparent 1px);
+            background-size: 50px 50px;
+            opacity: 0.1;
+            transform: perspective(500px) rotateX(60deg) translateY(-100px) translateZ(-200px);
+            animation: gridMove 10s linear infinite;
+        }
+
+        .ai-core-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        .ai-circle {
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            border: 2px solid var(--primary-color);
+            box-shadow: 0 0 20px var(--primary-color), inset 0 0 20px var(--primary-color);
+            position: relative;
+            animation: pulse 2s infinite;
+        }
+        .ai-circle::after {
+            content: ''; position: absolute; top: 10px; left: 10px; right: 10px; bottom: 10px;
+            border-radius: 50%; border: 1px dashed white;
+            animation: spin 10s linear infinite;
+        }
+        .ai-text { margin-top: 15px; font-size: 1.2rem; text-align: center; }
+
+        /* --- 右侧模块 --- */
+        .col-right { display: flex; flex-direction: column; gap: 15px; overflow-y: hidden; }
+
+        .timeline-container {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: var(--primary-color); }
+
+        .timeline-item {
+            display: flex;
+            margin-bottom: 20px;
+            position: relative;
+            padding-left: 20px;
+            border-left: 2px solid rgba(0, 243, 255, 0.3);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .timeline-item:hover {
+            border-left-color: var(--primary-color);
+            transform: translateX(5px);
+        }
+        .timeline-item::before {
+            content: ''; position: absolute; left: -6px; top: 5px;
+            width: 10px; height: 10px; background: var(--primary-color);
+            border-radius: 50%; box-shadow: 0 0 10px var(--primary-color);
+        }
+        .timeline-item.selected {
+            background: rgba(0, 243, 255, 0.1);
+            border-left: 3px solid var(--primary-color);
+        }
+        .time { font-size: 0.9rem; color: #fff; width: 60px; }
+        .event { color: var(--primary-color); }
+        .event-detail { font-size: 0.8rem; color: #aaa; margin-top: 5px; }
+        .event-score { font-size: 0.75rem; color: #ffff00; margin-top: 3px; }
+
+        .resource-card {
+            display: flex;
+            background: rgba(255,255,255,0.05);
+            margin-bottom: 10px;
+            padding: 10px;
+            border-left: 3px solid var(--primary-color);
+        }
+        .card-img { width: 60px; height: 60px; background: #333; margin-right: 10px; display: flex; align-items: center; justify-content: center;}
+
+        /* --- 动画定义 --- */
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 10px var(--primary-color); }
+            50% { transform: scale(1.05); box-shadow: 0 0 30px var(--primary-color); }
+            100% { transform: scale(0.95); box-shadow: 0 0 10px var(--primary-color); }
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes blinker { 50% { opacity: 0; } }
+        @keyframes gridMove { 0% { transform: perspective(500px) rotateX(60deg) translateY(0); } 100% { transform: perspective(500px) rotateX(60deg) translateY(50px); } }
+
+        .scanline {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: linear-gradient(to bottom, transparent 50%, rgba(0,0,0,0.5) 51%);
+            background-size: 100% 4px; pointer-events: none; z-index: 999; opacity: 0.3;
+        }
+
+        /* 控制按钮 */
+        .control-btn {
+            background: rgba(0, 243, 255, 0.2);
+            border: 1px solid var(--primary-color);
+            color: var(--primary-color);
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.3s;
+        }
+        .control-btn:hover {
+            background: rgba(0, 243, 255, 0.4);
+            box-shadow: 0 0 15px var(--primary-color);
+        }
+        .control-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="scanline"></div>
+
+    <div class="main-container">
+        <!-- 顶栏 -->
+        <div class="top-bar">
+            <div class="app-title">🤖 JARVIS TRAVEL AGENT <span style="font-size:0.8em; opacity:0.7">v3.0 4D</span></div>
+            <div class="system-status">
+                <span>DEST: <span id="dest-city">苏州</span></span>
+                <span>RISK: <span class="blink" id="risk-level">LOW</span></span>
+                <span>BUDGET: ¥<span id="budget-left">5000</span></span>
+                <span id="realtime-clock">12:00:00</span>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            
+            <!-- [左栏] 态势感知 -->
+            <div class="col-left">
+                <!-- 威胁雷达 -->
+                <div class="jarvis-box">
+                    <div class="corner-br"></div>
+                    <div class="box-title">TENSION RADAR // 张力雷达</div>
+                    <div id="radar-chart"></div>
+                </div>
+
+                <!-- 实时终端日志 -->
+                <div class="jarvis-box" style="flex:1">
+                    <div class="corner-br"></div>
+                    <div class="box-title">SYSTEM LOG // 终端</div>
+                    <div class="terminal-log" id="terminal">
+                        <div class="log-line">> System initialized...</div>
+                        <div class="log-line">> Waiting for session start...</div>
+                    </div>
+                </div>
+
+                <!-- 系统控制 -->
+                <div class="jarvis-box">
+                    <div class="corner-br"></div>
+                    <div class="box-title">SYSTEM CONTROL</div>
+                    <button class="control-btn" onclick="startSession()">🚀 START MISSION</button>
+                    <button class="control-btn" onclick="getNextOptions()" id="btn-next" disabled>➡️ GET OPTIONS</button>
+                    <button class="control-btn" onclick="selectOption()" id="btn-select" disabled>✅ CONFIRM</button>
+                </div>
+            </div>
+
+            <!-- [中栏] 核心指挥 -->
+            <div class="col-center">
+                <!-- 全息地图 -->
+                <div class="jarvis-box hologram-map">
+                    <div class="corner-br"></div>
+                    <!-- 🗺️ 真实高德地图 -->
+                    <div id="gaode-map" style="width:100%; height:100%; position:absolute; top:0; left:0; opacity:0.8;"></div>
+                    <div style="position:absolute; top:10px; left:10px; z-index:20; font-size:1.2rem; text-shadow:0 0 10px black; background:rgba(0,0,0,0.5); padding:5px 10px; border:1px solid #00f3ff">
+                        MAP VISUALIZATION
+                    </div>
+                </div>
+
+                <!-- AI 思考核心 -->
+                <div class="jarvis-box ai-core-container">
+                    <div class="corner-br"></div>
+                    <div class="ai-circle"></div>
+                    <div class="ai-text">
+                        <span id="ai-status">STANDBY</span><br>
+                        <span style="font-size:0.8rem; color:#aaa" id="ai-reasoning">等待启动任务...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- [右栏] 行动方案 -->
+            <div class="col-right">
+                <div class="jarvis-box" style="flex:2">
+                    <div class="corner-br"></div>
+                    <div class="box-title">MISSION TIMELINE // 行程</div>
+                    <div class="timeline-container" id="timeline">
+                        <div style="text-align:center; color:#aaa; padding:20px;">
+                            点击 START MISSION 开始规划
+                        </div>
+                    </div>
+                </div>
+
+                <div class="jarvis-box" style="flex:1">
+                    <div class="corner-br"></div>
+                    <div class="box-title">RECOMMENDATIONS // 推荐</div>
+                    <div style="overflow-y:auto" id="recommendations">
+                        <div style="text-align:center; color:#aaa; padding:10px;">
+                            暂无推荐
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // 全局状态
+        let currentSessionId = null;
+        let currentOptions = [];
+        let selectedOptionIndex = null;
+        let gaodeMap = null;  // 高德地图实例
+        let mapMarkers = [];  // 地图标记数组
+        let pathPolylines = [];  // 路径线数组
+        let visitHistory = [];  // 访问历史
+
+        // 0. 初始化高德地图
+        function initGaodeMap() {
+            gaodeMap = new AMap.Map('gaode-map', {
+                zoom: 13,
+                center: [120.5242, 31.3012],  // 苏州站
+                mapStyle: 'amap://styles/dark',  // 深色风格
+                viewMode: '3D'
+            });
+            
+            addLog('高德地图初始化成功');
+        }
+        
+        // 更新地图标记（单个）
+        function updateMapMarker(location, name, isStart = false) {
+            if(!gaodeMap) return;
+            
+            // 清除旧标记
+            mapMarkers.forEach(marker => marker.setMap(null));
+            mapMarkers = [];
+            
+            // 添加新标记
+            const marker = new AMap.Marker({
+                position: location,
+                title: name,
+                label: {
+                    content: name,
+                    direction: 'top'
+                },
+                icon: isStart ? 
+                    new AMap.Icon({
+                        size: new AMap.Size(30, 40),
+                        image: 'https://webapi.amap.com/theme/v1.3/markers/n/start.png'
+                    }) :
+                    new AMap.Icon({
+                        size: new AMap.Size(30, 40),
+                        image: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png'
+                    })
+            });
+            
+            marker.setMap(gaodeMap);
+            mapMarkers.push(marker);
+            
+            // 移动地图中心到标记位置
+            gaodeMap.setCenter(location);
+        }
+        
+        // 🗺️ 在地图上显示所有候选点
+        function showAllOptionsOnMap(options) {
+            if(!gaodeMap) return;
+            
+            // 只清除候选标记，保留历史路径
+            const historyMarkerCount = visitHistory.length;
+            mapMarkers.slice(historyMarkerCount).forEach(marker => marker.setMap(null));
+            mapMarkers = mapMarkers.slice(0, historyMarkerCount);
+            
+            const points = [];
+            
+            options.forEach((opt, index) => {
+                if(opt.lat && opt.lon) {
+                    const marker = new AMap.Marker({
+                        position: [opt.lon, opt.lat],
+                        title: opt.name,
+                        label: {
+                            content: `${index + 1}. ${opt.name}`,
+                            direction: 'right',
+                            offset: new AMap.Pixel(10, 0)
+                        },
+                        icon: new AMap.Icon({
+                            size: new AMap.Size(25, 34),
+                            image: `https://webapi.amap.com/theme/v1.3/markers/n/mark_b${index + 1}.png`
+                        })
+                    });
+                    
+                    marker.setMap(gaodeMap);
+                    mapMarkers.push(marker);
+                    points.push([opt.lon, opt.lat]);
+                }
+            });
+            
+            // 自动调整地图视野以显示所有点
+            if(points.length > 0) {
+                gaodeMap.setFitView();
+                addLog(`🗺️ 地图已显示 ${points.length} 个候选点`);
+            }
+        }
+        
+        // 🛣️ 绘制路径线（从上一个地点到当前地点）
+        function drawPathLine(fromPos, toPos, toName) {
+            if(!gaodeMap) return;
+            
+            // 创建路径线
+            const polyline = new AMap.Polyline({
+                path: [fromPos, toPos],
+                strokeColor: '#00f3ff',
+                strokeWeight: 3,
+                strokeOpacity: 0.8,
+                strokeStyle: 'solid',
+                lineJoin: 'round'
+            });
+            
+            polyline.setMap(gaodeMap);
+            pathPolylines.push(polyline);
+            
+            // 添加序号标记
+            const visitNumber = visitHistory.length;
+            const marker = new AMap.Marker({
+                position: toPos,
+                title: toName,
+                label: {
+                    content: `✅ ${visitNumber}. ${toName}`,
+                    direction: 'top'
+                },
+                icon: new AMap.Icon({
+                    size: new AMap.Size(32, 32),
+                    image: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_r.png'
+                })
+            });
+            
+            marker.setMap(gaodeMap);
+            mapMarkers.unshift(marker);  // 添加到数组开头，保留历史标记
+            
+            addLog(`🛣️ 已绘制路径: → ${toName}`);
+        }
+        
+        // 等待高德地图API加载完成后初始化
+        if(typeof AMap !== 'undefined') {
+            setTimeout(initGaodeMap, 500);
+        }
+
+        // 1. 初始化 ECharts 雷达图
+        var radarChart = echarts.init(document.getElementById('radar-chart'));
+        var radarOption = {
+            radar: {
+                indicator: [
+                    { name: '冲突度', max: 100 },
+                    { name: '新鲜感', max: 100 },
+                    { name: '体力需求', max: 100 },
+                    { name: '连续性', max: 100 },
+                    { name: '风险', max: 100 }
+                ],
+                shape: 'circle',
+                splitNumber: 4,
+                axisName: { color: '#00f3ff' },
+                splitLine: { lineStyle: { color: 'rgba(0, 243, 255, 0.2)' } },
+                splitArea: { show: false },
+                axisLine: { lineStyle: { color: 'rgba(0, 243, 255, 0.2)' } }
+            },
+            series: [{
+                type: 'radar',
+                data: [
+                    {
+                        value: [10, 50, 50, 50, 10],
+                        name: 'Tension Analysis',
+                        areaStyle: { color: 'rgba(0, 243, 255, 0.3)' },
+                        lineStyle: { color: '#00f3ff' }
+                    }
+                ]
+            }]
+        };
+        radarChart.setOption(radarOption);
+        window.addEventListener('resize', function() { radarChart.resize(); });
+
+        // 2. 实时时钟
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('realtime-clock').innerText = now.toLocaleTimeString();
+        }, 1000);
+
+        // 3. 终端日志
+        function addLog(message) {
+            const terminal = document.getElementById('terminal');
+            const line = document.createElement('div');
+            line.className = 'log-line';
+            line.innerText = "> " + message;
+            terminal.appendChild(line);
+            terminal.scrollTop = terminal.scrollHeight;
+            
+            if(terminal.children.length > 30) {
+                terminal.removeChild(terminal.firstChild);
+            }
+        }
+
+        // 4. 开始会话
+        async function startSession() {
+            addLog("Initializing new session...");
+            document.getElementById('ai-status').innerText = "INITIALIZING...";
+            document.getElementById('ai-reasoning').innerText = "正在连接4D空间智能引擎...";
+            
+            try {
+                const response = await fetch('/api/session/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        city: '苏州',
+                        start_location: '苏州站',
+                        duration_days: 3,
+                        budget: 5000,
+                        preferences: ['景点', '美食']
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if(data.success) {
+                    currentSessionId = data.session_id;
+                    addLog(`Session created: ${data.session_id}`);
+                    addLog(`Starting location: ${data.state.location}`);
+                    
+                    // 🗺️ 显示起点标记
+                    updateMapMarker([120.5242, 31.3012], data.state.location, true);
+                    
+                    // 📍 初始化访问历史（起点）
+                    visitHistory = [{
+                        name: data.state.location,
+                        lat: 31.3012,
+                        lon: 120.5242,
+                        time: 0,
+                        budget: data.state.budget
+                    }];
+                    
+                    document.getElementById('dest-city').innerText = '苏州';
+                    document.getElementById('budget-left').innerText = data.state.budget;
+                    document.getElementById('ai-status').innerText = "➡️ NEXT STEP";
+                    document.getElementById('ai-reasoning').innerText = "👉 点击 GET OPTIONS 按钮获取AI推荐";
+                    
+                    document.getElementById('btn-next').disabled = false;
+                } else {
+                    addLog(`ERROR: ${data.error}`);
+                }
+            } catch(error) {
+                addLog(`ERROR: ${error.message}`);
+            }
+        }
+
+        // 5. 获取下一步选项
+        async function getNextOptions() {
+            if(!currentSessionId) {
+                addLog("ERROR: No active session");
+                return;
+            }
+            
+            addLog("Requesting next options from W-Axis...");
+            document.getElementById('ai-status').innerText = "ANALYZING...";
+            document.getElementById('ai-reasoning').innerText = "W轴推理中...计算张力和冲突度...";
+            
+            try {
+                const response = await fetch('/api/plan/next', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        session_id: currentSessionId,
+                        k: 5
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if(data.success && data.options.length > 0) {
+                    currentOptions = data.options;
+                    addLog(`Received ${data.options.length} options`);
+                    
+                    // 🗺️ 在地图上显示所有候选点
+                    showAllOptionsOnMap(data.options);
+                    
+                    // 更新时间轴
+                    renderTimeline(data.options);
+                    
+                    // 默认选中第一个
+                    selectTimelineItem(0);
+                    
+                    // 更新推荐卡片
+                    renderRecommendations(data.options.slice(0, 3));
+                    
+                    document.getElementById('btn-select').disabled = false;
+                    
+                    // 更新预算显示
+                    if(data.session_state) {
+                        document.getElementById('budget-left').innerText = data.session_state.budget_left;
+                    }
+                    
+                    // 💡 UI提示
+                    document.getElementById('ai-status').innerText = "💡 PLEASE SELECT";
+                    document.getElementById('ai-reasoning').innerText = 
+                        "👆 点击时间轴或推荐卡片查看详情，然后点击 ✅ CONFIRM 确认前往";
+                } else {
+                    addLog("No more options available");
+                    document.getElementById('ai-status').innerText = "MISSION COMPLETE";
+                }
+            } catch(error) {
+                addLog(`ERROR: ${error.message}`);
+            }
+        }
+
+        // 6. 渲染时间轴
+        function renderTimeline(options) {
+            const timeline = document.getElementById('timeline');
+            timeline.innerHTML = '';
+            
+            options.forEach((opt, index) => {
+                const item = document.createElement('div');
+                item.className = 'timeline-item';
+                item.onclick = () => selectTimelineItem(index);
+                
+                // 生成emoji
+                const emoji = opt.type === 'attraction' ? '🏛️' : 
+                             opt.type === 'restaurant' ? '🍽️' : '📍';
+                
+                // 访问次数徽章
+                const visitBadge = opt.visit_count > 0 ? 
+                    `<span style="color:#ff0; font-size:0.7rem">(🔄 第${opt.visit_count+1}次)</span>` : 
+                    `<span style="color:#0f0; font-size:0.7rem">(✨ 新)</span>`;
+                
+                item.innerHTML = `
+                    <div class="time">#${index + 1}</div>
+                    <div>
+                        <div class="event">${emoji} ${opt.name} ${visitBadge}</div>
+                        <div class="event-detail">📍 ${opt.region} | ${opt.travel ? opt.travel.mode + ' ' + opt.travel.time + '分钟' : '未知'}</div>
+                        <div class="event-score">⭐ ${opt.score} | 🌌 W轴: ${opt.w_axis} | ⚔️ 冲突: ${opt.tensions.conflict}</div>
+                        <div class="event-detail" style="color:#0ff; margin-top:5px">💭 ${opt.explanation}</div>
+                    </div>
+                `;
+                timeline.appendChild(item);
+            });
+        }
+
+        // 7. 选择时间轴项
+        function selectTimelineItem(index) {
+            selectedOptionIndex = index;
+            
+            // 更新UI选中状态
+            document.querySelectorAll('.timeline-item').forEach((item, i) => {
+                item.classList.toggle('selected', i === index);
+            });
+            
+            const opt = currentOptions[index];
+            
+            // 更新AI解释（显示当前选择）
+            document.getElementById('ai-status').innerText = `🎯 SELECTED #${index + 1}`;
+            document.getElementById('ai-reasoning').innerText = opt.explanation;
+            
+            // 更新雷达图
+            updateRadar(opt);
+            
+            // 🗺️ 地图聚焦到选中的点
+            if(opt.lat && opt.lon && gaodeMap) {
+                gaodeMap.setZoomAndCenter(15, [opt.lon, opt.lat]);
+            }
+            
+            addLog(`✅ Selected: #${index + 1} ${opt.name}`);
+        }
+
+        // 8. 更新雷达图
+        function updateRadar(option) {
+            const t = option.tensions;
+            radarOption.series[0].data[0].value = [
+                Math.abs(t.conflict * 100),
+                Math.max(0, t.novelty * 100),
+                Math.max(0, -t.energy * 100 + 50),
+                Math.max(0, t.continuity * 100),
+                option.risk.level === 'warning' ? 70 : 10
+            ];
+            radarChart.setOption(radarOption);
+            
+            // 更新风险级别
+            document.getElementById('risk-level').innerText = 
+                option.risk.level === 'warning' ? 'HIGH' : 'LOW';
+        }
+
+        // 9. 渲染推荐卡片
+        function renderRecommendations(options) {
+            const container = document.getElementById('recommendations');
+            container.innerHTML = '';
+            
+            options.forEach((opt, index) => {
+                const emoji = opt.type === 'attraction' ? '🏛️' : 
+                             opt.type === 'restaurant' ? '🍽️' : '📍';
+                
+                const card = document.createElement('div');
+                card.className = 'resource-card';
+                card.style.cursor = 'pointer';
+                card.innerHTML = `
+                    <div class="card-img">${emoji}</div>
+                    <div>
+                        <div>${opt.name}</div>
+                        <div style="font-size:0.8rem; color:#aaa">${opt.region} | ⭐${opt.score}</div>
+                    </div>
+                `;
+                
+                // 🔥 添加点击事件：选择该选项
+                card.onclick = () => {
+                    selectTimelineItem(opt.rank - 1);  // rank从1开始，index从0开始
+                    addLog(`👆 Selected from recommendations: ${opt.name}`);
+                    // 视觉反馈
+                    card.style.border = '2px solid #00f3ff';
+                    setTimeout(() => card.style.border = '1px solid rgba(0, 243, 255, 0.3)', 500);
+                };
+                
+                container.appendChild(card);
+            });
+        }
+
+        // 10. 确认选择
+        async function selectOption() {
+            if(selectedOptionIndex === null) {
+                addLog("WARNING: No option selected, using first option");
+                selectedOptionIndex = 0;
+            }
+            
+            const opt = currentOptions[selectedOptionIndex];
+            addLog(`Confirming selection: ${opt.name}`);
+            document.getElementById('ai-status').innerText = "EXECUTING...";
+            
+            try {
+                const response = await fetch('/api/plan/select', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        session_id: currentSessionId,
+                        option_index: selectedOptionIndex
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if(data.success) {
+                    // 🎉 成功反馈
+                    document.getElementById('ai-status').innerText = "✅ SUCCESS!";
+                    document.getElementById('ai-reasoning').innerText = `已前往 ${opt.name}！`;
+                    
+                    addLog(`✅ Traveled to: ${data.new_state.location}`);
+                    addLog(`⏰ Time: ${Math.round(data.new_state.time * 10) / 10}h | 💰 Budget: ¥${Math.round(data.new_state.budget)}`);
+                    
+                    // 🛣️ 绘制路径线
+                    if(opt.lat && opt.lon && visitHistory.length > 0) {
+                        const lastVisit = visitHistory[visitHistory.length - 1];
+                        drawPathLine([lastVisit.lon, lastVisit.lat], [opt.lon, opt.lat], opt.name);
+                    }
+                    
+                    // 📍 记录访问历史
+                    visitHistory.push({
+                        name: opt.name,
+                        lat: opt.lat,
+                        lon: opt.lon,
+                        time: data.new_state.time,
+                        budget: data.new_state.budget
+                    });
+                    
+                    addLog(`📝 访问历史: ${visitHistory.length} 个地点`);
+                    
+                    // 重置选择
+                    selectedOptionIndex = null;
+                    currentOptions = [];
+                    
+                    // ⏱️ 显示倒计时提示
+                    let countdown = 2;
+                    const countdownInterval = setInterval(() => {
+                        document.getElementById('ai-reasoning').innerText = 
+                            `正在获取下一步推荐... ${countdown}秒`;
+                        countdown--;
+                        if(countdown < 0) clearInterval(countdownInterval);
+                    }, 1000);
+                    
+                    // 自动获取下一步
+                    setTimeout(() => getNextOptions(), 2000);
+                } else {
+                    addLog(`ERROR: ${data.error}`);
+                }
+            } catch(error) {
+                addLog(`ERROR: ${error.message}`);
+            }
+        }
+
+        // 初始化日志
+        addLog("JARVIS Travel Agent v3.0 initialized");
+        addLog("4D Spatial Intelligence Engine ready");
+        addLog("Click START MISSION to begin");
+
+    </script>
+</body>
+</html>
